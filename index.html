@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maze Visualizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:         #0a0e14;
+      --panel:      #0f1520;
+      --border:     #1e2d40;
+      --accent:     #00d4ff;
+      --accent-dim: #0a4a5a;
+      --visited:    #0d3348;
+      --frontier:   #00aacc;
+      --path:       #00ffaa;
+      --wall:       #1e3a50;
+      --cell-bg:    #060d14;
+      --start:      #ff6b35;
+      --end:        #ff3579;
+      --text:       #7ab8cc;
+      --text-bright:#c8e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+      overflow-x: hidden;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: clamp(1.4rem, 4vw, 2.2rem);
+      color: var(--accent);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(0,212,255,0.4);
+    }
+
+    header p {
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      color: var(--text);
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    .layout {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      width: 100%;
+      max-width: 1000px;
+    }
+
+    /* ── Controls panel ── */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-width: 200px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+    }
+
+    .card-title {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(0,212,255,0.6);
+    }
+
+    .val {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--accent);
+      font-size: 0.8rem;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px 0;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    button:hover:not(:disabled) {
+      background: rgba(0,212,255,0.08);
+      box-shadow: 0 0 12px rgba(0,212,255,0.25);
+    }
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      border-color: var(--border);
+      color: var(--text);
+    }
+    button.secondary:hover:not(:disabled) {
+      background: rgba(255,255,255,0.04);
+      box-shadow: none;
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.78rem;
+    }
+    .stat-label {
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .stat-val {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--accent);
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+    }
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Canvas ── */
+    .canvas-wrap {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    canvas {
+      display: block;
+      border: 1px solid var(--border);
+      image-rendering: pixelated;
+    }
+
+    .status-bar {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      color: var(--text);
+      width: 100%;
+      text-align: left;
+    }
+    .status-bar span { color: var(--accent); }
+
+    @media (max-width: 680px) {
+      .layout { flex-direction: column; align-items: center; }
+      .controls { flex-direction: row; flex-wrap: wrap; min-width: unset; width: 100%; }
+      .card { flex: 1; min-width: 160px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>// Maze Visualizer</h1>
+  <p>Animated recursive backtracker &nbsp;·&nbsp; BFS solver</p>
+</header>
+
+<div class="layout">
+
+  <!-- ── Controls ── -->
+  <div class="controls">
+
+    <div class="card">
+      <div class="card-title">// Config</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <label>
+          Grid Size
+          <input type="range" id="sizeSlider" min="5" max="40" value="20">
+          <span class="val" id="sizeVal">20 × 20</span>
+        </label>
+
+        <label>
+          Speed
+          <input type="range" id="speedSlider" min="1" max="10" value="5">
+          <span class="val" id="speedVal">×5</span>
+        </label>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">// Actions</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="btnGenerate">Generate Maze</button>
+        <button id="btnSolve" disabled>Solve BFS</button>
+        <button id="btnReset" class="secondary" disabled>Reset</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">// Stats</div>
+      <div class="stats">
+        <div class="stat-row">
+          <span class="stat-label">Cells</span>
+          <span class="stat-val" id="statCells">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Visited</span>
+          <span class="stat-val" id="statVisited">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Path Len</span>
+          <span class="stat-val" id="statPath">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Steps</span>
+          <span class="stat-val" id="statSteps">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">// Legend</div>
+      <div class="legend">
+        <div class="legend-item"><div class="swatch" style="background:#ff6b35"></div> Start</div>
+        <div class="legend-item"><div class="swatch" style="background:#ff3579"></div> End</div>
+        <div class="legend-item"><div class="swatch" style="background:#0d3348"></div> Visited</div>
+        <div class="legend-item"><div class="swatch" style="background:#0c4d5e"></div> Frontier</div>
+        <div class="legend-item"><div class="swatch" style="background:#00ffaa"></div> Path</div>
+        <div class="legend-item" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"></div>
+        <div class="legend-item"><div class="swatch" style="background:#5a4a28"></div> Gen · from</div>
+        <div class="legend-item"><div class="swatch" style="background:#1e4d5c"></div> Gen · carve into</div>
+        <div class="legend-item"><div class="swatch" style="background:#4a3058"></div> Gen · backtrack</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Canvas ── -->
+  <div class="canvas-wrap">
+    <canvas id="mazeCanvas"></canvas>
+    <div class="status-bar" id="statusBar">// <span>READY</span> — generate a maze to begin</div>
+  </div>
+
+</div>
+
+<!-- Emscripten output (must load before mazeGlue.js) -->
+<script src="maze.js"></script>
+
+<script type="module">
+  import { initMaze, generateMaze, solveBFS } from './mazeGlue.js';
+
+  // ── Wall flags (must match maze.cpp) ──
+  const WALL_N = 1, WALL_S = 2, WALL_E = 4, WALL_W = 8;
+  const ALL_WALLS = WALL_N | WALL_S | WALL_E | WALL_W;
+  // ── Step states (must match maze.cpp) ──
+  const STATE_VISITED = 0, STATE_FRONTIER = 1, STATE_PATH = 2,
+        STATE_START   = 3, STATE_END      = 4,
+        STATE_GEN_FROM  = 5, STATE_GEN_TO   = 6, STATE_GEN_BACK = 7;
+
+  // ── DOM refs ──
+  const canvas      = document.getElementById('mazeCanvas');
+  const ctx         = canvas.getContext('2d');
+  const btnGenerate = document.getElementById('btnGenerate');
+  const btnSolve    = document.getElementById('btnSolve');
+  const btnReset    = document.getElementById('btnReset');
+  const sizeSlider  = document.getElementById('sizeSlider');
+  const speedSlider = document.getElementById('speedSlider');
+  const sizeVal     = document.getElementById('sizeVal');
+  const speedVal    = document.getElementById('speedVal');
+  const statusBar   = document.getElementById('statusBar');
+  const statCells   = document.getElementById('statCells');
+  const statVisited = document.getElementById('statVisited');
+  const statPath    = document.getElementById('statPath');
+  const statSteps   = document.getElementById('statSteps');
+
+  // ── State ──
+  let grid       = null;   // { width, height, cells }
+  let steps      = [];     // solve steps from BFS (or last gen steps for stats)
+  let cellSize   = 20;
+  let animHandle = null;
+  let isAnimating = false;
+
+  // Per-cell color state for animation (null = uncolored)
+  let cellColors = null;
+
+  // ── Init Wasm ──
+  setStatus('LOADING', 'initializing wasm module…');
+  await initMaze();
+  setStatus('READY', 'generate a maze to begin');
+  btnGenerate.disabled = false;
+
+  // ── Slider labels ──
+  sizeSlider.addEventListener('input', () => {
+    sizeVal.textContent = `${sizeSlider.value} × ${sizeSlider.value}`;
+  });
+  speedSlider.addEventListener('input', () => {
+    speedVal.textContent = `×${speedSlider.value}`;
+  });
+
+  // ── Generate ──
+  btnGenerate.addEventListener('click', () => {
+    stopAnimation();
+    const size = parseInt(sizeSlider.value);
+    const { width, height, cells: finalCells, steps: genSteps } = generateMaze(size, size, 0);
+    steps = genSteps;
+
+    grid = {
+      width,
+      height,
+      cells: new Array(width * height).fill(ALL_WALLS),
+    };
+    cellColors = new Array(width * height).fill(null);
+
+    const maxPx = Math.min(window.innerWidth - 280, 640);
+    cellSize = Math.max(8, Math.floor(maxPx / size));
+    canvas.width  = size * cellSize;
+    canvas.height = size * cellSize;
+
+    statCells.textContent   = `${size * size}`;
+    statVisited.textContent = '—';
+    statPath.textContent    = '—';
+    statSteps.textContent   = genSteps.length;
+
+    btnGenerate.disabled = true;
+    btnSolve.disabled    = true;
+    btnReset.disabled    = true;
+    setStatus('GENERATING', 'recursive backtracker…');
+
+    drawMaze();
+    animateGeneration(genSteps, finalCells);
+  });
+
+  // ── Solve ──
+  btnSolve.addEventListener('click', () => {
+    if (!grid || isAnimating) return;
+    stopAnimation();
+    cellColors = new Array(grid.width * grid.height).fill(null);
+
+    const { width, height } = grid;
+    steps = solveBFS(0, 0, width - 1, height - 1);
+
+    statSteps.textContent = steps.length;
+    setStatus('SOLVING', 'BFS in progress…');
+    btnSolve.disabled    = true;
+    btnGenerate.disabled = true;
+
+    animateSolve();
+  });
+
+  // ── Reset ──
+  btnReset.addEventListener('click', () => {
+    if (!grid || isAnimating) return;
+    stopAnimation();
+    cellColors = new Array(grid.width * grid.height).fill(null);
+    drawMaze();
+    highlightCell(0, 0, 'start');
+    highlightCell(grid.width - 1, grid.height - 1, 'end');
+    statVisited.textContent = '—';
+    statPath.textContent    = '—';
+    btnSolve.disabled       = false;
+    btnGenerate.disabled    = false;
+    setStatus('READY', 'maze reset — ready to solve again');
+  });
+
+  function carveBetween(cells, w, row, col, nr, nc) {
+    const dirs = [
+      { dr: -1, dc: 0, wallCur: WALL_N, wallNbr: WALL_S },
+      { dr: 1, dc: 0, wallCur: WALL_S, wallNbr: WALL_N },
+      { dr: 0, dc: 1, wallCur: WALL_E, wallNbr: WALL_W },
+      { dr: 0, dc: -1, wallCur: WALL_W, wallNbr: WALL_E },
+    ];
+    for (const d of dirs) {
+      if (row + d.dr === nr && col + d.dc === nc) {
+        const i = row * w + col;
+        const j = nr * w + nc;
+        cells[i] &= ~d.wallCur;
+        cells[j] &= ~d.wallNbr;
+        return;
+      }
+    }
+  }
+
+  // ── Animation ──
+  function animateGeneration(genSteps, finalCells) {
+    isAnimating = true;
+    let stepIdx = 0;
+    let pendingFrom = null;
+    const stepsPerFrame = parseInt(speedSlider.value);
+
+    function frame() {
+      let finalized = false;
+      for (let n = 0; n < stepsPerFrame && stepIdx < genSteps.length && !finalized; n++) {
+        const { col, row, state } = genSteps[stepIdx++];
+
+        if (state === STATE_START || state === STATE_END) {
+          grid.cells = finalCells.slice();
+          pendingFrom = null;
+          drawMaze();
+          highlightCell(0, 0, 'start');
+          highlightCell(grid.width - 1, grid.height - 1, 'end');
+          stepIdx = genSteps.length;
+          finalized = true;
+          break;
+        }
+
+        if (state === STATE_GEN_FROM) {
+          pendingFrom = { col, row };
+          drawMaze();
+          paintCell(col, row, 'genFrom');
+        } else if (state === STATE_GEN_TO) {
+          if (pendingFrom) {
+            carveBetween(grid.cells, grid.width, pendingFrom.row, pendingFrom.col, row, col);
+          }
+          pendingFrom = null;
+          drawMaze();
+          paintCell(col, row, 'genTo');
+        } else if (state === STATE_GEN_BACK) {
+          pendingFrom = null;
+          drawMaze();
+          paintCell(col, row, 'genBack');
+        }
+      }
+
+      if (stepIdx >= genSteps.length) {
+        isAnimating = false;
+        if (grid.cells.some((c, i) => c !== finalCells[i])) {
+          grid.cells = finalCells.slice();
+          drawMaze();
+        }
+        highlightCell(0, 0, 'start');
+        highlightCell(grid.width - 1, grid.height - 1, 'end');
+        btnGenerate.disabled = false;
+        btnSolve.disabled    = false;
+        btnReset.disabled    = false;
+        setStatus('READY', `${grid.width}×${grid.height} maze generated`);
+        return;
+      }
+
+      animHandle = requestAnimationFrame(frame);
+    }
+
+    animHandle = requestAnimationFrame(frame);
+  }
+
+  function animateSolve() {
+    isAnimating = true;
+    let stepIdx = 0;
+    let visitedCount = 0;
+    let pathCount    = 0;
+
+    // Skip the start/end marker steps (state 3 & 4) at the front
+    while (stepIdx < steps.length &&
+           (steps[stepIdx].state === STATE_START || steps[stepIdx].state === STATE_END)) {
+      stepIdx++;
+    }
+
+    const stepsPerFrame = parseInt(speedSlider.value);
+
+    function frame() {
+      if (stepIdx >= steps.length) {
+        isAnimating = false;
+        btnGenerate.disabled = false;
+        setStatus('DONE', `path length ${pathCount} · visited ${visitedCount} cells`);
+        statVisited.textContent = visitedCount;
+        statPath.textContent    = pathCount;
+        return;
+      }
+
+      // Process N steps this frame
+      for (let i = 0; i < stepsPerFrame && stepIdx < steps.length; i++, stepIdx++) {
+        const { col, row, state } = steps[stepIdx];
+
+        if (state === STATE_VISITED)  { paintCell(col, row, 'visited');  visitedCount++; }
+        if (state === STATE_FRONTIER) { paintCell(col, row, 'frontier'); }
+        if (state === STATE_PATH)     { paintCell(col, row, 'path');     pathCount++; }
+      }
+
+      // Always redraw start/end on top so they don't get painted over
+      highlightCell(0, 0, 'start');
+      highlightCell(grid.width - 1, grid.height - 1, 'end');
+
+      statVisited.textContent = visitedCount;
+      animHandle = requestAnimationFrame(frame);
+    }
+
+    animHandle = requestAnimationFrame(frame);
+  }
+
+  function stopAnimation() {
+    if (animHandle) { cancelAnimationFrame(animHandle); animHandle = null; }
+    isAnimating = false;
+  }
+
+  // ── Drawing ──
+
+  // Draw the full maze (walls only)
+  function drawMaze() {
+    const { width, height, cells } = grid;
+    const cs = cellSize;
+    const wallW = Math.max(1, Math.floor(cs * 0.08));
+
+    ctx.fillStyle = '#060d14'; // cell background
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#1e3a50';
+    ctx.lineWidth   = wallW;
+    ctx.lineCap     = 'square';
+
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        const walls = cells[row * width + col];
+        const x = col * cs, y = row * cs;
+
+        if (walls & WALL_N) { ctx.beginPath(); ctx.moveTo(x, y);       ctx.lineTo(x + cs, y);       ctx.stroke(); }
+        if (walls & WALL_S) { ctx.beginPath(); ctx.moveTo(x, y + cs);  ctx.lineTo(x + cs, y + cs);  ctx.stroke(); }
+        if (walls & WALL_E) { ctx.beginPath(); ctx.moveTo(x + cs, y);  ctx.lineTo(x + cs, y + cs);  ctx.stroke(); }
+        if (walls & WALL_W) { ctx.beginPath(); ctx.moveTo(x, y);       ctx.lineTo(x, y + cs);       ctx.stroke(); }
+      }
+    }
+  }
+
+  // Paint a cell's background color, then redraw its walls on top
+  function paintCell(col, row, type) {
+    const { width, cells } = grid;
+    const cs   = cellSize;
+    const wallW = Math.max(1, Math.floor(cs * 0.08));
+    const pad  = wallW + 1;
+    const x    = col * cs, y = row * cs;
+
+    const colors = {
+      visited:  '#0d3348',
+      frontier: '#0c4d5e',
+      path:     '#003d28',
+      genFrom:  '#5a4a28',
+      genTo:    '#1e4d5c',
+      genBack:  '#4a3058',
+    };
+
+    // Fill cell interior (inset slightly so walls stay visible)
+    ctx.fillStyle = colors[type] || '#060d14';
+    ctx.fillRect(x + pad, y + pad, cs - pad * 2, cs - pad * 2);
+
+    const dotColors = {
+      visited: '#1a5a7a',
+      frontier: '#00aacc',
+      path: '#00ffaa',
+      genFrom: '#c9a227',
+      genTo: '#00d4ff',
+      genBack: '#b565a7',
+    };
+    const dotR = Math.max(1, cs * 0.13);
+    ctx.fillStyle = dotColors[type] || 'transparent';
+    ctx.beginPath();
+    ctx.arc(x + cs / 2, y + cs / 2, dotR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Redraw this cell's walls on top
+    const walls = cells[row * width + col];
+    ctx.strokeStyle = '#1e3a50';
+    ctx.lineWidth   = wallW;
+    ctx.lineCap     = 'square';
+
+    if (walls & WALL_N) { ctx.beginPath(); ctx.moveTo(x, y);       ctx.lineTo(x + cs, y);       ctx.stroke(); }
+    if (walls & WALL_S) { ctx.beginPath(); ctx.moveTo(x, y + cs);  ctx.lineTo(x + cs, y + cs);  ctx.stroke(); }
+    if (walls & WALL_E) { ctx.beginPath(); ctx.moveTo(x + cs, y);  ctx.lineTo(x + cs, y + cs);  ctx.stroke(); }
+    if (walls & WALL_W) { ctx.beginPath(); ctx.moveTo(x, y);       ctx.lineTo(x, y + cs);       ctx.stroke(); }
+  }
+
+  // Highlight start or end cell with a filled circle
+  function highlightCell(col, row, type) {
+    const cs = cellSize;
+    const x  = col * cs + cs / 2;
+    const y  = row * cs + cs / 2;
+    const r  = cs * 0.3;
+
+    ctx.fillStyle = type === 'start' ? '#ff6b35' : '#ff3579';
+    ctx.shadowColor  = type === 'start' ? '#ff6b35' : '#ff3579';
+    ctx.shadowBlur   = 10;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // ── Status ──
+  function setStatus(tag, msg) {
+    statusBar.innerHTML = `// <span>${tag}</span> — ${msg}`;
+  }
+</script>
+
+</body>
+</html>
